@@ -47,6 +47,8 @@ pip install -r requirements.txt
 GROQ_API_KEY=your_real_groq_api_key
 ```
 
+También puedes definir `GROQ_API_KEY` como variable de entorno en tu plataforma de despliegue.
+
 ## Cómo ejecutar
 
 1. Coloca tus PDFs en `data/raw/`.
@@ -75,11 +77,20 @@ El repositorio está preparado para no subir:
 - `.env`
 - `venv/`
 - `data/raw/`
-- `data/processed/`
-- `data/index/`
 - `logs/`
 
-Esto evita publicar credenciales, documentos potencialmente sensibles y artefactos generados.
+Esto evita publicar credenciales y documentos potencialmente sensibles. En cambio, `data/processed/` y `data/index/` sí pueden versionarse para desplegar la app sin reconstruir el índice en el servidor.
+
+## Compartir la app
+
+La forma más simple es desplegar el repositorio en Streamlit Community Cloud.
+
+1. Sube a GitHub también `data/processed/` y `data/index/`.
+2. Entra en Streamlit Community Cloud y crea una app conectando este repositorio.
+3. Indica como archivo principal `src/app.py`.
+4. Añade `GROQ_API_KEY` en los secretos o variables de entorno del servicio.
+
+Al desplegar, obtendrás una URL pública sin necesidad de comprar un dominio. El dominio propio solo tiene sentido más adelante si quieres una dirección personalizada.
 
 ## Publicar en GitHub
 

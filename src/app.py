@@ -5,9 +5,17 @@ sys.path.append(os.path.dirname(__file__))
 from search_engine import cercar
 from response_engine import generar_resposta
 
+BASE_DIR = os.path.dirname(__file__)
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, ".."))
+INDEX_PATH = os.path.join(PROJECT_ROOT, "data", "index")
+
 st.set_page_config(page_title="Chatbot SIFECAT", page_icon="🤖")
 st.title("🤖 Chatbot SIFECAT")
 st.caption("Assistent per a la gestió de fons FEDER de Catalunya")
+
+if not os.path.exists(os.path.join(INDEX_PATH, "index.faiss")):
+    st.error("No s'ha trobat l'índex de cerca a data/index. Genera'l abans d'executar l'app.")
+    st.stop()
 
 if "missatges" not in st.session_state:
     st.session_state.missatges = []
@@ -26,7 +34,7 @@ if pregunta:
     with st.chat_message("assistant"):
         with st.spinner("Cercant resposta..."):
             try:
-                fragments = cercar(pregunta, "data/index")
+                fragments = cercar(pregunta, INDEX_PATH)
                 resposta = generar_resposta(pregunta, fragments)
                 st.write(resposta)
                 st.session_state.missatges.append({"rol": "assistant", "text": resposta})

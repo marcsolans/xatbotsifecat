@@ -2,12 +2,20 @@ import os
 from groq import Groq
 
 def carregar_api_key():
+    api_key = os.getenv("GROQ_API_KEY")
+    if api_key:
+        return api_key
+
     env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+    if not os.path.exists(env_path):
+        raise ValueError("No s'ha trobat GROQ_API_KEY. Defineix-la com a variable d'entorn o al fitxer .env")
+
     with open(env_path, "r") as f:
         for linia in f:
             if linia.startswith("GROQ_API_KEY="):
                 return linia.strip().split("=", 1)[1]
-    raise ValueError("No s'ha trobat GROQ_API_KEY al fitxer .env")
+
+    raise ValueError("No s'ha trobat GROQ_API_KEY. Defineix-la com a variable d'entorn o al fitxer .env")
 
 def generar_resposta(pregunta, fragments):
     api_key = carregar_api_key()
