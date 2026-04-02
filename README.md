@@ -1,14 +1,15 @@
 # SIFECAT Chatbot
 
-Chatbot RAG para consultar documentación de SIFECAT y fondos FEDER de Catalunya usando Streamlit, FAISS, Sentence Transformers y Groq.
+Chatbot RAG para consultar documentación de SIFECAT y fondos FEDER de Catalunya usando Streamlit, FAISS, Sentence Transformers y un modelo LLM servido por Groq u OpenRouter.
 
 ## Qué incluye
 
 - Interfaz web de chat con Streamlit
+- Lectura en voz alta de respuestas desde el navegador
 - Procesado de PDFs a fragmentos de texto
 - Índice vectorial con FAISS
 - Recuperación de contexto relevante
-- Generación de respuestas con Groq
+- Generación de respuestas con Groq u OpenRouter
 
 ## Estructura del proyecto
 
@@ -28,13 +29,16 @@ logs/
 ## Requisitos
 
 - Python 3.9+
-- Una API key válida de Groq
+- Una API key válida de Groq o OpenRouter
 
 ## Instalación
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
+python -m venv venv
+# Windows PowerShell
+.\venv\Scripts\Activate.ps1
+# macOS / Linux
+# source venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -47,7 +51,15 @@ pip install -r requirements.txt
 GROQ_API_KEY=your_real_groq_api_key
 ```
 
-También puedes definir `GROQ_API_KEY` como variable de entorno en tu plataforma de despliegue.
+Si prefieres OpenRouter, usa:
+
+```env
+OPENROUTER_API_KEY=your_real_openrouter_api_key
+```
+
+También puedes definir `GROQ_API_KEY` o `OPENROUTER_API_KEY` como variable de entorno en tu plataforma de despliegue.
+
+Opcionalmente puedes ajustar el modelo con `GROQ_MODEL` o `OPENROUTER_MODEL`.
 
 ## Cómo ejecutar
 
@@ -67,8 +79,17 @@ python src/search_engine.py
 4. Lanza la aplicación:
 
 ```bash
-streamlit run src/app.py
+python -m streamlit run src/app.py
 ```
+
+Los scripts resuelven las rutas desde la raíz del proyecto, así que no dependen del directorio actual desde el que los lances.
+
+## Notas operativas
+
+- Si `data/raw/` no existe, créala antes de ejecutar la ingesta.
+- `data/processed/` y `data/index/` se crean automáticamente cuando corresponde.
+- Si cambias los PDFs, vuelve a ejecutar `python src/ingest.py` y `python src/search_engine.py` para regenerar el índice.
+- La lectura en voz alta usa la API de voz del navegador. Se recomienda abrir la app en Edge o Chrome para una compatibilidad más estable.
 
 ## Archivos que no se suben
 
@@ -88,7 +109,7 @@ La forma más simple es desplegar el repositorio en Streamlit Community Cloud.
 1. Sube a GitHub también `data/processed/` y `data/index/`.
 2. Entra en Streamlit Community Cloud y crea una app conectando este repositorio.
 3. Indica como archivo principal `src/app.py`.
-4. Añade `GROQ_API_KEY` en los secretos o variables de entorno del servicio.
+4. Añade `GROQ_API_KEY` o `OPENROUTER_API_KEY` en los secretos o variables de entorno del servicio.
 
 Al desplegar, obtendrás una URL pública sin necesidad de comprar un dominio. El dominio propio solo tiene sentido más adelante si quieres una dirección personalizada.
 
