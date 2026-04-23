@@ -13,6 +13,30 @@ DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
 DEFAULT_OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
+PERFIL_RESPOSTA_CONFIG = {
+    "estandard": {
+        "to": "Resposta professional i clara.",
+        "min_paraules": 220,
+    },
+    "completa": {
+        "to": "Resposta completa, ben estructurada i amb més profunditat.",
+        "min_paraules": 420,
+    },
+    "informe": {
+        "to": "Informe extens i detallat amb cobertura màxima del context.",
+        "min_paraules": 850,
+    },
+}
+
+
+def preparar_fragments_amb_cites(fragments):
+    fragments_amb_cites = []
+    for index, fragment in enumerate(fragments, start=1):
+        fragment_preparat = dict(fragment)
+        fragment_preparat["citation_id"] = index
+        fragments_amb_cites.append(fragment_preparat)
+    return fragments_amb_cites
+
 
 @lru_cache(maxsize=1)
 def carregar_configuracio_model():
@@ -56,7 +80,7 @@ def generar_resposta_groq(prompt, api_key, model):
         model=model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.2,
-        max_tokens=1400,
+        max_tokens=3900,
     )
     return resposta.choices[0].message.content
 
@@ -67,7 +91,7 @@ def generar_resposta_openrouter(prompt, api_key, model):
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
-            "max_tokens": 1400,
+            "max_tokens": 3900,
         }
     )
     headers = {
@@ -123,9 +147,7 @@ def formatar_resposta(resposta):
     if len(frases) <= 2:
         return resposta
 
-    blocs = []
-    for index in range(0, len(frases), 2):
-        blocs.append(" ".join(frases[index:index + 2]))
+    blocs = [" ".join(frases[index:index + 2]) for index in range(0, len(frases), 2)]
 
     return "\n\n".join(blocs)
 
@@ -133,7 +155,7 @@ def formatar_resposta(resposta):
 def detectar_intencio_resposta(pregunta):
     pregunta_normalitzada = pregunta.lower()
 
-    if any(paraula in pregunta_normalitzada for paraula in ["informe", "resum executiu", "avalu", "avaluació", "diagn", "diagnòstic"]):
+    if any(paraula in pregunta_normalitzada for paraula in ["informe", "resum executiu", "avalu", "avaluació", "diagn", "diagnòstic", "anàlisi completa", "document extens"]):
         return "analitica"
     if any(paraula in pregunta_normalitzada for paraula in ["redacta", "escriu", "prepara", "proposa", "enquesta", "correu", "email"]):
         return "redaccio"
@@ -146,10 +168,26 @@ def resumir_context(fragments, limit=5):
     resums = []
     for fragment in fragments[:limit]:
         font = fragment.get("font", "Document")
+        citation_id = fragment.get("citation_id", "?")
         text = fragment.get("text", "").strip().replace("\n", " ")
         text = re.sub(r"\s+", " ", text)
-        resums.append(f"- {font}: {text[:360]}")
+        resums.append(f"- [{citation_id}] {font}: {text[:360]}")
     return "\n".join(resums)
+
+
+def construir_context_amb_cites(fragments):
+    blocs = []
+    for fragment in fragments:
+        citation_id = fragment.get("citation_id", "?")
+        font = fragment.get("font", "Document")
+        fragment_id = fragment.get("id", "sense-id")
+        text = fragment.get("text", "").strip()
+        blocs.append(
+            f"[{citation_id}] Font: {font}\n"
+            f"Fragment: {fragment_id}\n"
+            f"Text: {text}"
+        )
+    return "\n\n".join(blocs)
 
 
 def construir_instruccions_per_intencio(intencio):
@@ -174,21 +212,55 @@ Si hi ha límits d'informació, indica exactament què es pot concloure i què n
 
     return """Prioritza una resposta experta, clara i concreta.
 Explica el que realment diu el context, evitant repetir frases genèriques.
-Quan sigui útil, concreta conceptes, diferències, camps, estats o criteris rellevants."""
+Quan sigui útil, concreta conceptes, diferències, camps, estats o criteris rellevants.
+Sigues exhaustiu: desenvolupa cada apartat important amb el màxim detall que el context permeti."""
 
 
-def construir_prompt(pregunta, fragments):
+def normalitzar_perfil_resposta(perfil_resposta):
+    perfil = (perfil_resposta or "completa").strip().lower()
+    return perfil if perfil in PERFIL_RESPOSTA_CONFIG else "completa"
+
+
+def construir_instruccions_per_perfil(perfil_resposta):
+    perfil = normalitzar_perfil_resposta(perfil_resposta)
+    configuracio = PERFIL_RESPOSTA_CONFIG[perfil]
+
+    instruccio_base = [
+        f"Objectiu de qualitat: {configuracio['to']}",
+        f"Extensió mínima orientativa: {configuracio['min_paraules']} paraules (si el context ho permet).",
+        "Evita respostes telegràfiques: desenvolupa cada apartat amb detall operatiu.",
+        "Quan sigui pertinent, incorpora seccions de: requisits, passos, validacions, errors habituals, riscos i recomanacions.",
+        "No ometis matisos importants del context recuperat.",
+    ]
+
+    if perfil == "informe":
+        instruccio_base.extend(
+            [
+                "Estructura la sortida com un informe formal, amb títol i apartats clars.",
+                "Inclou diagnosi, anàlisi detallada, implicacions operatives i recomanacions accionables.",
+                "Afegeix una secció final de conclusions prioritzades.",
+            ]
+        )
+
+    return "\n".join(f"- {linia}" for linia in instruccio_base)
+
+
+def construir_prompt(pregunta, fragments, perfil_resposta="completa"):
     intencio = detectar_intencio_resposta(pregunta)
-    context = "\n\n".join([f["text"] for f in fragments])
+    fragments = preparar_fragments_amb_cites(fragments)
+    context = construir_context_amb_cites(fragments)
     context_resumit = resumir_context(fragments)
     instruccions_intencio = construir_instruccions_per_intencio(intencio)
+    instruccions_perfil = construir_instruccions_per_perfil(perfil_resposta)
 
     return f"""Ets un assistent expert en SIFECAT i en la gestió operativa i documental dels fons FEDER de Catalunya.
 La teva feina és donar respostes d'alta qualitat, útils de veritat i adaptades a la necessitat concreta de l'usuari.
 
 Normes de resposta:
 - Respon sempre i només en català.
-- Fes una resposta natural, professional i específica; no sonis com un chatbot genèric.
+- Fes una resposta natural, professional i específica; parla de manera propera, amable i fàcil d'entendre.
+- Escriu de tu a tu, amb calidesa i claredat, sense sonar burocràtic, fred ni administratiu.
+- Prioritza que la persona entengui bé què ha de fer o què significa cada cosa, amb llenguatge planer quan sigui possible.
 - No utilitzis frases buides com "segons el context proporcionat" o "aquí tens la resposta".
 - No repeteixis la pregunta ni facis introduccions artificials.
 - No inventis informació ni completis buits amb suposicions no justificades.
@@ -196,6 +268,13 @@ Normes de resposta:
 - Si la informació existeix al context, extreu-ne el màxim valor possible: passos, camps, estats, criteris, matisos, riscos, diferències, excepcions o implicacions.
 - Personalitza el contingut a la consulta real de l'usuari; no responguis amb una plantilla rígida si no cal.
 - Evita el to "canned AI". La resposta ha de semblar feta per un especialista que entén el domini.
+- Dona la resposta més completa possible. Si hi ha diversos punts rellevants, cobreix-los tots.
+- Desenvolupa el contingut amb profunditat: procediment, requisits, validacions, excepcions, dependències, errors habituals, impacte funcional i recomanacions pràctiques.
+- No siguis breu si el context permet ampliar. Prioritza exhaustivitat i precisió per sobre de concisió.
+- Quan el tema sigui complex, estructura la resposta amb apartats clars i detallats.
+- Quan afirmis alguna cosa rellevant, cita explícitament el fragment d'origen amb referències com [1], [2] o [1][3].
+- Si combines diverses fonts en una mateixa idea, cita totes les que pertoquin.
+- Acaba sempre amb un apartat breu titulat "Fonts utilitzades" on enumeris només els identificadors citats a la resposta.
 
 Qualitat esperada:
 - Dona primer la resposta útil, no una introducció decorativa.
@@ -204,9 +283,14 @@ Qualitat esperada:
 - Si la pregunta demana redacció, entrega un esborrany professional aprofitable.
 - Si hi ha diverses opcions o casos, diferencia'ls de forma neta.
 - Quan el context ho permeti, concreta noms d'elements de SIFECAT com operacions, certificacions N1/N2, contractes, transaccions, indicadors, controls o estats.
+- Si el context conté prou informació, afegeix una secció final amb observacions útils, riscos, matisos o bones pràctiques.
+- Si hi ha passos o punts importants, explica'ls de manera amable i entenedora, no rígida.
 
 Instruccions específiques per a aquesta consulta:
 {instruccions_intencio}
+
+Perfil de resposta requerit:
+{instruccions_perfil}
 
 Resums dels fragments recuperats:
 {context_resumit}
@@ -217,13 +301,13 @@ Context complet:
 Pregunta de l'usuari:
 {pregunta}
 
-Genera una resposta final professional, clara, rica en contingut i directament útil."""
+Genera una resposta final professional, propera, clara, exhaustiva, rica en contingut i directament útil."""
 
-def generar_resposta(pregunta, fragments):
+def generar_resposta(pregunta, fragments, perfil_resposta="completa"):
     if not fragments:
         return "No he trobat context rellevant per respondre amb prou fiabilitat."
 
-    prompt = construir_prompt(pregunta, fragments)
+    prompt = construir_prompt(pregunta, fragments, perfil_resposta=perfil_resposta)
     resposta = generar_resposta_model(prompt)
     resposta = resposta.replace("Segons el context proporcionat, ", "")
     resposta = resposta.replace("Segons el context, ", "")

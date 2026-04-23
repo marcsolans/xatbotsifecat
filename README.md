@@ -5,11 +5,13 @@ Chatbot RAG para consultar documentación de SIFECAT y fondos FEDER de Catalunya
 ## Qué incluye
 
 - Interfaz web de chat con Streamlit
+- Subida de documentos desde la propia app
 - Lectura en voz alta de respuestas desde el navegador
 - Procesado de PDFs a fragmentos de texto
 - Índice vectorial con FAISS
 - Recuperación de contexto relevante
 - Generación de respuestas con Groq u OpenRouter
+- Respuestas con citas explícitas a los fragmentos utilizados
 
 ## Estructura del proyecto
 
@@ -63,7 +65,8 @@ Opcionalmente puedes ajustar el modelo con `GROQ_MODEL` o `OPENROUTER_MODEL`.
 
 ## Cómo ejecutar
 
-1. Coloca tus PDFs en `data/raw/`.
+1. Coloca tus documentos en `data/raw/`.
+  Se admiten `PDF`, `TXT` y `MD`.
 2. Genera los fragmentos:
 
 ```bash
@@ -88,8 +91,10 @@ Los scripts resuelven las rutas desde la raíz del proyecto, así que no depende
 
 - Si `data/raw/` no existe, créala antes de ejecutar la ingesta.
 - `data/processed/` y `data/index/` se crean automáticamente cuando corresponde.
-- Si cambias los PDFs, vuelve a ejecutar `python src/ingest.py` y `python src/search_engine.py` para regenerar el índice.
+- Si cambias los documentos, vuelve a ejecutar `python src/ingest.py` y `python src/search_engine.py` para regenerar el índice.
+- También puedes subir documentos directamente desde el panel inferior de la app (junto al área de consulta) para que se procesen e indexen sin salir de Streamlit.
 - La lectura en voz alta usa la API de voz del navegador. Se recomienda abrir la app en Edge o Chrome para una compatibilidad más estable.
+- La respuesta muestra referencias explícitas y, debajo, un bloque desplegable con los fragmentos recuperados y su procedencia.
 
 ## Archivos que no se suben
 
