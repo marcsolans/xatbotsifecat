@@ -1,6 +1,11 @@
-import fitz
 import json
 from pathlib import Path
+
+try:
+    import fitz  # PyMuPDF
+except ImportError:
+    fitz = None
+    from pypdf import PdfReader
 
 from settings import PROCESSED_DIR, RAW_DIR
 
@@ -9,9 +14,16 @@ SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".md"}
 
 def llegir_pdf(ruta_pdf):
     text_complet = ""
-    with fitz.open(ruta_pdf) as doc:
-        for pagina in doc:
-            text_complet += pagina.get_text()
+
+    if fitz is not None:
+        with fitz.open(ruta_pdf) as doc:
+            for pagina in doc:
+                text_complet += pagina.get_text()
+        return text_complet
+
+    reader = PdfReader(str(ruta_pdf))
+    for pagina in reader.pages:
+        text_complet += pagina.extract_text() or ""
     return text_complet
 
 
