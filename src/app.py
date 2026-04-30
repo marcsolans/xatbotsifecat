@@ -544,6 +544,7 @@ index_disponible = (INDEX_DIR / "index.faiss").exists()
 with st.sidebar:
     st.markdown("### Assistent SIFECAT")
     st.caption("Assistent virtual SIFECAT per a consultes operatives, certificació i anàlisi documental amb traçabilitat de fonts.")
+
     st.divider()
     st.button("Netejar conversa", use_container_width=True, on_click=netejar_conversa)
 

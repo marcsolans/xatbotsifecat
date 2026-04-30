@@ -12,6 +12,10 @@ from settings import ENV_FILE
 DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
 DEFAULT_OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+MAX_OUTPUT_TOKENS = 900
+MAX_FRAGMENTS_PROMPT = 6
+MAX_FRAGMENT_CHARS = 1200
+MAX_TOTAL_CONTEXT_CHARS = 7000
 
 PERFIL_RESPOSTA_CONFIG = {
     "estandard": {
@@ -38,9 +42,45 @@ def preparar_fragments_amb_cites(fragments):
     return fragments_amb_cites
 
 
+def limitar_fragments_per_prompt(
+    fragments,
+    max_fragments=MAX_FRAGMENTS_PROMPT,
+    max_fragment_chars=MAX_FRAGMENT_CHARS,
+    max_total_context_chars=MAX_TOTAL_CONTEXT_CHARS,
+):
+    fragments_limitats = []
+    total_chars = 0
+
+    for fragment in fragments:
+        if len(fragments_limitats) >= max_fragments:
+            break
+
+        text_original = str(fragment.get("text", "") or "").strip()
+        if not text_original:
+            continue
+
+        text_truncat = text_original[:max_fragment_chars]
+        if len(text_original) > max_fragment_chars:
+            text_truncat += "..."
+
+        if total_chars + len(text_truncat) > max_total_context_chars:
+            espai_rest = max_total_context_chars - total_chars
+            if espai_rest < 200:
+                break
+            text_truncat = f"{text_truncat[:espai_rest].rstrip()}..."
+
+        fragment_preparat = dict(fragment)
+        fragment_preparat["text"] = text_truncat
+        fragments_limitats.append(fragment_preparat)
+        total_chars += len(text_truncat)
+
+    return fragments_limitats
+
+
 @lru_cache(maxsize=1)
 def carregar_configuracio_model():
-    load_dotenv(ENV_FILE, override=True)
+    # Prioritza variables de l'entorn/sessio i usa .env com a fallback.
+    load_dotenv(ENV_FILE, override=False)
 
     openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
     groq_api_key = os.getenv("GROQ_API_KEY")
@@ -69,6 +109,23 @@ def carregar_configuracio_model():
     )
 
 
+def configurar_api_keys(groq_api_key=None, openrouter_api_key=None):
+    if groq_api_key is not None:
+        if key := groq_api_key.strip():
+            os.environ["GROQ_API_KEY"] = key
+        else:
+            os.environ.pop("GROQ_API_KEY", None)
+
+    if openrouter_api_key is not None:
+        if key := openrouter_api_key.strip():
+            os.environ["OPENROUTER_API_KEY"] = key
+        else:
+            os.environ.pop("OPENROUTER_API_KEY", None)
+
+    carregar_configuracio_model.cache_clear()
+    crear_client_groq.cache_clear()
+
+
 @lru_cache(maxsize=1)
 def crear_client_groq(api_key):
     return Groq(api_key=api_key)
@@ -80,7 +137,7 @@ def generar_resposta_groq(prompt, api_key, model):
         model=model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.2,
-        max_tokens=3900,
+        max_tokens=MAX_OUTPUT_TOKENS,
     )
     return resposta.choices[0].message.content
 
@@ -91,7 +148,7 @@ def generar_resposta_openrouter(prompt, api_key, model):
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
-            "max_tokens": 3900,
+            "max_tokens": MAX_OUTPUT_TOKENS,
         }
     )
     headers = {
@@ -171,7 +228,7 @@ def resumir_context(fragments, limit=5):
         citation_id = fragment.get("citation_id", "?")
         text = fragment.get("text", "").strip().replace("\n", " ")
         text = re.sub(r"\s+", " ", text)
-        resums.append(f"- [{citation_id}] {font}: {text[:360]}")
+        resums.append(f"- [{citation_id}] {font}: {text[:220]}")
     return "\n".join(resums)
 
 
@@ -248,8 +305,9 @@ def construir_instruccions_per_perfil(perfil_resposta):
 def construir_prompt(pregunta, fragments, perfil_resposta="completa"):
     intencio = detectar_intencio_resposta(pregunta)
     fragments = preparar_fragments_amb_cites(fragments)
+    fragments = limitar_fragments_per_prompt(fragments)
     context = construir_context_amb_cites(fragments)
-    context_resumit = resumir_context(fragments)
+    context_resumit = resumir_context(fragments, limit=4)
     instruccions_intencio = construir_instruccions_per_intencio(intencio)
     instruccions_perfil = construir_instruccions_per_perfil(perfil_resposta)
 
